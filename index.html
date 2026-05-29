@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hollander AP Invoice Parser</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Instrument+Serif:ital@0;1&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #0f0e0c;
+    --surface: #181714;
+    --border: #2a2825;
+    --border-light: #3a3835;
+    --text: #e8e4dd;
+    --text-muted: #7a7670;
+    --text-dim: #4a4845;
+    --gold: #c9a84c;
+    --gold-glow: rgba(201,168,76,0.12);
+    --green: #4caf7d;
+    --green-dim: rgba(76,175,125,0.15);
+    --yellow: #d4a843;
+    --yellow-dim: rgba(212,168,67,0.15);
+    --red: #e05c5c;
+    --red-dim: rgba(224,92,92,0.15);
+    --radius: 6px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 14px; min-height: 100vh; line-height: 1.5; }
+
+  /* PASSWORD GATE */
+  #passwordGate { position: fixed; inset: 0; background: var(--bg); display: flex; align-items: center; justify-content: center; z-index: 9999; }
+  #passwordGate.hidden { display: none; }
+  .gate-box { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 40px 48px; width: 360px; text-align: center; }
+  .gate-logo { width: 48px; height: 48px; border: 1.5px solid var(--gold); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-family: 'Instrument Serif', serif; font-size: 24px; color: var(--gold); margin: 0 auto 20px; }
+  .gate-title { font-family: 'Instrument Serif', serif; font-size: 22px; color: var(--text); margin-bottom: 6px; }
+  .gate-sub { font-size: 12px; color: var(--text-muted); margin-bottom: 28px; font-family: 'DM Mono', monospace; }
+  .gate-input { width: 100%; background: var(--bg); border: 1px solid var(--border-light); border-radius: var(--radius); padding: 11px 14px; color: var(--text); font-family: 'DM Mono', monospace; font-size: 14px; text-align: center; letter-spacing: 0.15em; outline: none; transition: border-color 0.2s; margin-bottom: 12px; }
+  .gate-input:focus { border-color: var(--gold); }
+  .gate-input.error { border-color: var(--red); animation: shake 0.3s ease; }
+  @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+  .gate-btn { width: 100%; background: var(--gold); color: #0f0e0c; border: none; border-radius: var(--radius); padding: 11px; font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 14px; cursor: pointer; transition: opacity 0.15s; }
+  .gate-btn:hover { opacity: 0.88; }
+  .gate-error { font-size: 12px; color: var(--red); font-family: 'DM Mono', monospace; margin-top: 10px; min-height: 18px; }
+
+  /* HEADER */
+  header { border-bottom: 1px solid var(--border); padding: 18px 32px; display: flex; align-items: center; gap: 16px; background: var(--surface); }
+  .logo-mark { width: 36px; height: 36px; border: 1.5px solid var(--gold); border-radius: 4px; display: flex; align-items: center; justify-content: center; font-family: 'Instrument Serif', serif; font-size: 18px; color: var(--gold); flex-shrink: 0; }
+  .header-title { font-family: 'Instrument Serif', serif; font-size: 20px; color: var(--text); }
+  .header-sub { font-size: 12px; color: var(--text-muted); font-family: 'DM Mono', monospace; margin-left: auto; }
+  .skills-status { font-size: 11px; font-family: 'DM Mono', monospace; padding: 3px 8px; border-radius: 99px; }
+  .skills-status.loading { color: var(--yellow); background: var(--yellow-dim); }
+  .skills-status.loaded { color: var(--green); background: var(--green-dim); }
+  .skills-status.error { color: var(--red); background: var(--red-dim); }
+
+  /* MAIN */
+  .app { max-width: 920px; margin: 0 auto; padding: 40px 32px; }
+
+  /* DROP ZONE */
+  .drop-zone { border: 1.5px dashed var(--border-light); border-radius: var(--radius); padding: 52px 32px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; background: var(--surface); position: relative; }
+  .drop-zone:hover, .drop-zone.drag-over { border-color: var(--gold); background: var(--gold-glow); }
+  .drop-zone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+  .drop-icon { font-size: 32px; margin-bottom: 12px; display: block; }
+  .drop-title { font-family: 'Instrument Serif', serif; font-size: 20px; color: var(--text); margin-bottom: 6px; }
+  .drop-sub { font-size: 13px; color: var(--text-muted); }
+
+  /* FILE LIST */
+  .file-list { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .file-item { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 14px; display: flex; align-items: center; gap: 10px; }
+  .file-name { flex: 1; font-family: 'DM Mono', monospace; font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-size { font-size: 11px; color: var(--text-muted); flex-shrink: 0; }
+  .file-remove { background: none; border: none; color: var(--text-dim); cursor: pointer; font-size: 14px; padding: 2px 6px; border-radius: 3px; transition: color 0.15s, background 0.15s; }
+  .file-remove:hover { color: var(--red); background: var(--red-dim); }
+
+  /* ACTIONS */
+  .actions { margin-top: 24px; display: flex; gap: 12px; align-items: center; }
+  .btn-primary { background: var(--gold); color: #0f0e0c; border: none; border-radius: var(--radius); padding: 11px 24px; font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 14px; cursor: pointer; transition: opacity 0.15s; }
+  .btn-primary:hover { opacity: 0.88; }
+  .btn-primary:disabled { opacity: 0.35; cursor: not-allowed; }
+  .btn-secondary { background: none; color: var(--text-muted); border: 1px solid var(--border-light); border-radius: var(--radius); padding: 11px 18px; font-family: 'DM Sans', sans-serif; font-size: 14px; cursor: pointer; transition: border-color 0.15s, color 0.15s; }
+  .btn-secondary:hover { color: var(--text); }
+  .batch-info { font-size: 12px; color: var(--text-muted); font-family: 'DM Mono', monospace; }
+
+  /* PROCESSING */
+  .processing { margin-top: 32px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; display: none; }
+  .processing.active { display: block; }
+  .processing-header { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+  .spinner { width: 16px; height: 16px; border: 2px solid var(--border-light); border-top-color: var(--gold); border-radius: 50%; animation: spin 0.8s linear infinite; flex-shrink: 0; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .processing-title { font-family: 'DM Mono', monospace; font-size: 13px; color: var(--gold); }
+  .progress-bar-wrap { height: 3px; background: var(--border); border-radius: 2px; margin-bottom: 14px; overflow: hidden; }
+  .progress-bar { height: 100%; background: var(--gold); border-radius: 2px; transition: width 0.4s ease; width: 0%; }
+  .processing-log { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--text-muted); line-height: 1.8; max-height: 180px; overflow-y: auto; }
+  .log-line { display: block; }
+  .log-line.new { color: var(--text); animation: fadein 0.3s ease; }
+  @keyframes fadein { from { opacity: 0; transform: translateX(-4px); } to { opacity: 1; } }
+
+  /* RESULTS */
+  .results { margin-top: 32px; display: none; }
+  .results.active { display: block; }
+  .results-header { display: flex; align-items: baseline; gap: 16px; margin-bottom: 20px; }
+  .results-title { font-family: 'Instrument Serif', serif; font-size: 22px; color: var(--text); }
+  .results-meta { font-size: 12px; color: var(--text-muted); font-family: 'DM Mono', monospace; }
+
+  /* SUMMARY CARDS */
+  .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  .summary-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; }
+  .summary-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; font-family: 'DM Mono', monospace; }
+  .summary-value { font-family: 'Instrument Serif', serif; font-size: 24px; color: var(--text); }
+  .summary-value.green { color: var(--green); }
+  .summary-value.yellow { color: var(--yellow); }
+  .summary-value.gold { color: var(--gold); }
+
+  /* INVOICE TABLE */
+  .invoice-table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; margin-bottom: 20px; }
+  .invoice-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .invoice-table th { text-align: left; padding: 10px 14px; font-size: 11px; font-family: 'DM Mono', monospace; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid var(--border); font-weight: 400; }
+  .invoice-table td { padding: 10px 14px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .invoice-table tr:last-child td { border-bottom: none; }
+  .invoice-table tr:hover td { background: rgba(255,255,255,0.02); }
+  .invoice-table tr.gl-row td { padding: 5px 14px 5px 28px; background: rgba(255,255,255,0.01); font-size: 12px; color: var(--text-muted); }
+  .invoice-table tr.gl-row:last-child td { border-bottom: 1px solid var(--border); }
+  .badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-family: 'DM Mono', monospace; }
+  .badge-green { background: var(--green-dim); color: var(--green); }
+  .badge-yellow { background: var(--yellow-dim); color: var(--yellow); }
+  .review-flag { font-size: 11px; color: var(--yellow); font-family: 'DM Mono', monospace; margin-top: 3px; display: block; }
+  .amount-cell { font-family: 'DM Mono', monospace; text-align: right; white-space: nowrap; }
+  .gl-tag { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--text-dim); }
+
+  /* FLAGS */
+  .flags-section { margin-top: 20px; display: none; }
+  .flags-section.has-flags { display: block; }
+  .flags-title { font-size: 12px; font-family: 'DM Mono', monospace; color: var(--yellow); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+  .flag-item { background: var(--yellow-dim); border: 1px solid rgba(212,168,67,0.25); border-radius: var(--radius); padding: 10px 14px; font-size: 12px; color: var(--text); margin-bottom: 8px; font-family: 'DM Mono', monospace; line-height: 1.6; }
+
+  /* DOWNLOAD */
+  .download-section { margin-top: 20px; padding: 20px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); display: flex; align-items: center; gap: 16px; }
+  .download-info { flex: 1; }
+  .download-title { font-weight: 600; font-size: 14px; color: var(--text); margin-bottom: 3px; }
+  .download-sub { font-size: 12px; color: var(--text-muted); }
+  .btn-download { background: none; color: var(--gold); border: 1.5px solid var(--gold); border-radius: var(--radius); padding: 10px 20px; font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 13px; cursor: pointer; transition: background 0.15s; white-space: nowrap; text-decoration: none; display: inline-block; }
+  .btn-download:hover { background: var(--gold-glow); }
+
+  /* ERROR */
+  .error-box { background: var(--red-dim); border: 1px solid rgba(224,92,92,0.3); border-radius: var(--radius); padding: 16px; margin-top: 20px; font-size: 13px; color: var(--text); display: none; }
+  .error-box.active { display: block; }
+
+  footer { border-top: 1px solid var(--border); padding: 16px 32px; font-size: 11px; color: var(--text-dim); font-family: 'DM Mono', monospace; text-align: center; margin-top: 60px; }
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- PASSWORD GATE -->
+<div id="passwordGate">
+  <div class="gate-box">
+    <div class="gate-logo">H</div>
+    <div class="gate-title">AP Invoice Parser</div>
+    <div class="gate-sub">Hollander Hospitality · Internal Tool</div>
+    <input class="gate-input" id="gateInput" type="password" placeholder="Enter password" autocomplete="off">
+    <button class="gate-btn" id="gateBtn">Enter</button>
+    <div class="gate-error" id="gateError"></div>
+  </div>
+</div>
+
+<header>
+  <div class="logo-mark">H</div>
+  <div class="header-title">AP Invoice Parser</div>
+  <div class="header-sub">Hollander Hospitality · M3 Import</div>
+  <div class="skills-status loading" id="skillsStatus">Loading skills…</div>
+</header>
+
+<div class="app">
+
+  <div class="drop-zone" id="dropZone">
+    <input type="file" id="fileInput" multiple accept=".pdf,image/*,.jpg,.jpeg,.png,.webp">
+    <span class="drop-icon">📄</span>
+    <div class="drop-title">Drop invoices here</div>
+    <div class="drop-sub">PDF or images · multiple files supported</div>
+  </div>
+
+  <div class="file-list" id="fileList"></div>
+
+  <div class="actions">
+    <button class="btn-primary" id="processBtn" disabled>Process Invoices</button>
+    <button class="btn-secondary" id="clearBtn" style="display:none">Clear</button>
+    <span class="batch-info" id="batchInfo"></span>
+  </div>
+
+  <div class="processing" id="processingBox">
+    <div class="processing-header">
+      <div class="spinner"></div>
+      <div class="processing-title" id="processingTitle">Processing…</div>
+    </div>
+    <div class="progress-bar-wrap"><div class="progress-bar" id="progressBar"></div></div>
+    <div class="processing-log" id="processingLog"></div>
+  </div>
+
+  <div class="error-box" id="errorBox"></div>
+
+  <div class="results" id="resultsBox">
+    <div class="results-header">
+      <div class="results-title">Results</div>
+      <div class="results-meta" id="resultsMeta"></div>
+    </div>
+    <div class="summary-grid">
+      <div class="summary-card"><div class="summary-label">Invoices</div><div class="summary-value gold" id="statTotal">—</div></div>
+      <div class="summary-card"><div class="summary-label">Ready</div><div class="summary-value green" id="statReady">—</div></div>
+      <div class="summary-card"><div class="summary-label">Needs Review</div><div class="summary-value yellow" id="statReview">—</div></div>
+      <div class="summary-card"><div class="summary-label">Batch Total</div><div class="summary-value" id="statAmount">—</div></div>
+    </div>
+    <div class="invoice-table-wrap">
+      <table class="invoice-table">
+        <thead>
+          <tr>
+            <th>Vendor</th>
+            <th>Invoice #</th>
+            <th>Date</th>
+            <th>Property</th>
+            <th>GL / Amount</th>
+            <th style="text-align:right">Total</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="invoiceTableBody"></tbody>
+      </table>
+    </div>
+    <div class="flags-section" id="flagsSection">
+      <div class="flags-title">⚠ Flags requiring attention</div>
+      <div id="flagsList"></div>
+    </div>
+    <div class="download-section">
+      <div class="download-info">
+        <div class="download-title">M3 Import File</div>
+        <div class="download-sub">AP Invoice · Exceptions · Legend — ready to import</div>
+      </div>
+      <a id="downloadBtn" class="btn-download" href="#" download="ap-import.xlsx">Download Excel</a>
+    </div>
+  </div>
+
+</div>
+
+<footer>Hollander Hospitality · AP Department · Internal Use Only</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+// ─── CONFIG ───────────────────────────────────────────────────────────────────
+const GITHUB_TOKEN  = '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';
+const GITHUB_OWNER  = 'blakevw';
+const GITHUB_REPO   = 'hollander-ap-tools';
+const GITHUB_BRANCH = 'main';
+const APP_PASSWORD  = 'test';  // change this before deploying
+const BATCH_SIZE    = 3;               // invoices per API call
+
+// ─── STATE ────────────────────────────────────────────────────────────────────
+let files = [];
+let skillsCache = { vendorMaster: null, m3Template: null };
+let allResults  = [];
+
+// ─── PASSWORD GATE ────────────────────────────────────────────────────────────
+const gate      = document.getElementById('passwordGate');
+const gateInput = document.getElementById('gateInput');
+const gateBtn   = document.getElementById('gateBtn');
+const gateError = document.getElementById('gateError');
+
+if (sessionStorage.getItem('ap_authed') === '1') gate.classList.add('hidden');
+
+function tryUnlock() {
+  if (gateInput.value === APP_PASSWORD) {
+    sessionStorage.setItem('ap_authed', '1');
+    gate.classList.add('hidden');
+  } else {
+    gateError.textContent = 'Incorrect password';
+    gateInput.classList.add('error');
+    gateInput.value = '';
+    setTimeout(() => gateInput.classList.remove('error'), 500);
+  }
+}
+gateBtn.addEventListener('click', tryUnlock);
+gateInput.addEventListener('keydown', e => { if (e.key === 'Enter') tryUnlock(); });
+
+// ─── SKILL LOADER ─────────────────────────────────────────────────────────────
+const skillsStatus = document.getElementById('skillsStatus');
+
+async function fetchSkillFile(path) {
+  const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path}?ref=${GITHUB_BRANCH}`;
+  const res = await fetch(url, {
+    headers: {
+      'Authorization': `Bearer ${GITHUB_TOKEN}`,
+      'Accept': 'application/vnd.github.v3.raw'
+    }
+  });
+  if (!res.ok) throw new Error(`Failed to load ${path}: ${res.status}`);
+  return res.text();
+}
+
+async function loadSkills() {
+  skillsStatus.className = 'skills-status loading';
+  skillsStatus.textContent = 'Loading skills…';
+  try {
+    const [vendorMaster, m3Template] = await Promise.all([
+      fetchSkillFile('skills/vendor-master.md'),
+      fetchSkillFile('skills/m3-template.md')
+    ]);
+    skillsCache.vendorMaster = vendorMaster;
+    skillsCache.m3Template   = m3Template;
+    skillsStatus.className   = 'skills-status loaded';
+    skillsStatus.textContent = '✓ Skills loaded';
+    updateProcessBtn();
+  } catch (err) {
+    skillsStatus.className   = 'skills-status error';
+    skillsStatus.textContent = '✗ Skills failed to load';
+    console.error('Skill load error:', err);
+  }
+}
+
+loadSkills();
+
+// ─── FILE HANDLING ────────────────────────────────────────────────────────────
+const dropZone  = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const fileList  = document.getElementById('fileList');
+const processBtn= document.getElementById('processBtn');
+const clearBtn  = document.getElementById('clearBtn');
+const batchInfo = document.getElementById('batchInfo');
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('drag-over'); addFiles([...e.dataTransfer.files]); });
+fileInput.addEventListener('change', () => addFiles([...fileInput.files]));
+
+function addFiles(newFiles) {
+  files = [...files, ...newFiles];
+  renderFileList();
+}
+
+function renderFileList() {
+  fileList.innerHTML = files.map((f, i) => `
+    <div class="file-item">
+      <span>${f.type.includes('pdf') ? '📋' : '🖼'}</span>
+      <span class="file-name">${f.name}</span>
+      <span class="file-size">${(f.size/1024).toFixed(0)} KB</span>
+      <button class="file-remove" onclick="removeFile(${i})">✕</button>
+    </div>`).join('');
+
+  const batches = Math.ceil(files.length / BATCH_SIZE);
+  batchInfo.textContent = files.length > BATCH_SIZE
+    ? `${files.length} files · ${batches} batches of ${BATCH_SIZE}`
+    : '';
+
+  clearBtn.style.display = files.length > 0 ? '' : 'none';
+  updateProcessBtn();
+}
+
+function removeFile(i) { files.splice(i, 1); renderFileList(); }
+
+function updateProcessBtn() {
+  processBtn.disabled = files.length === 0 || !skillsCache.vendorMaster;
+}
+
+clearBtn.addEventListener('click', () => {
+  files = [];
+  fileInput.value = '';
+  allResults = [];
+  renderFileList();
+  document.getElementById('resultsBox').classList.remove('active');
+  document.getElementById('errorBox').classList.remove('active');
+  document.getElementById('processingBox').classList.remove('active');
+});
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+function fileToBase64(file) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(r.result.split(',')[1]);
+    r.onerror = () => rej(new Error('Read failed'));
+    r.readAsDataURL(file);
+  });
+}
+
+function logLine(msg) {
+  const log = document.getElementById('processingLog');
+  const line = document.createElement('span');
+  line.className = 'log-line new';
+  line.textContent = '› ' + msg;
+  log.appendChild(line);
+  log.scrollTop = log.scrollHeight;
+  setTimeout(() => line.classList.remove('new'), 400);
+}
+
+function setProgress(pct) {
+  document.getElementById('progressBar').style.width = pct + '%';
+}
+
+function setProcessingTitle(msg) {
+  document.getElementById('processingTitle').textContent = msg;
+}
+
+function fmtAmt(n) {
+  return '$' + parseFloat(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// ─── PARSE JSON (robust) ──────────────────────────────────────────────────────
+async function parseJSON(raw) {
+  const cleaned = raw.replace(/```json\n?|```\n?/g, '').trim();
+
+  // Strategy 1: direct
+  try { return JSON.parse(cleaned); } catch(_) {}
+
+  // Strategy 2: find outermost array
+  const s = cleaned.indexOf('['), e = cleaned.lastIndexOf(']');
+  if (s !== -1 && e > s) {
+    try { return JSON.parse(cleaned.slice(s, e+1)); } catch(_) {}
+  }
+
+  // Strategy 3: extract objects one by one
+  const objs = [];
+  let depth = 0, start = -1;
+  for (let i = 0; i < cleaned.length; i++) {
+    if (cleaned[i] === '{') { if (depth===0) start=i; depth++; }
+    else if (cleaned[i] === '}') {
+      depth--;
+      if (depth===0 && start!==-1) {
+        try { objs.push(JSON.parse(cleaned.slice(start, i+1))); } catch(_) {}
+        start = -1;
+      }
+    }
+  }
+  if (objs.length > 0) return objs;
+
+  // Strategy 4: ask Claude to repair
+  logLine('JSON malformed — asking Claude to repair…');
+  const fix = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 8000,
+      messages: [{ role: 'user', content: `Fix this broken JSON array. Return ONLY valid JSON, no markdown:\n\n${cleaned}` }]
+    })
+  });
+  const fixData = await fix.json();
+  const fixedText = fixData.content.filter(b=>b.type==='text').map(b=>b.text).join('').replace(/```json\n?|```\n?/g,'').trim();
+  try { return JSON.parse(fixedText); } catch(_) {}
+
+  throw new Error('Could not parse invoice data. Try uploading fewer invoices at once.');
+}
+
+// ─── SYSTEM PROMPT ────────────────────────────────────────────────────────────
+function buildSystemPrompt() {
+  return `You are an AP invoice parser for Hollander Hospitality, LLC (Enterprise ID: 001).
+
+=== VENDOR MASTER ===
+${skillsCache.vendorMaster}
+
+=== M3 IMPORT RULES ===
+${skillsCache.m3Template}
+
+=== ADDITIONAL RULES ===
+- PostDate ALWAYS equals InvoiceDate (Hollander policy)
+- PropertyID ALWAYS equals CompanyID
+- For PSE utilities: use the account number as InvoiceNumber (no traditional invoice number)
+- For Charlie's Produce: strip leading minus sign from invoice number
+- Guest Supply: use pre-surcharge amount (before 2.5% CC surcharge)
+- NEVER use PO number as invoice number
+
+=== MULTI-GL SUPPORT ===
+Some invoices have multiple GL codes with separate amounts (handwritten on the invoice).
+For each invoice, return a "lineItems" array. Each entry has:
+  { "accountNumber": 640100, "amount": 123.45, "description": "optional detail" }
+If only one GL code exists, lineItems will have a single entry.
+The top-level "amount" is always the total invoice amount.
+
+=== OUTPUT FORMAT ===
+Return ONLY a valid JSON array. No markdown, no preamble. Each element:
+{
+  "vendorName": "matched name from vendor master if found, else as printed",
+  "invoiceNumber": "exactly as printed",
+  "invoiceDate": "MM/DD/YYYY",
+  "dueDate": "MM/DD/YYYY",
+  "amount": 0.00,
+  "companyID": 6,
+  "propertyID": 6,
+  "propertyName": "full property name",
+  "vendorNumber": "from master or REVIEW NEEDED",
+  "approvalStatus": "APPROVED | NOT FOUND | UNCLEAR",
+  "status": "READY FOR REVIEW | NOT READY FOR IMPORT",
+  "flags": ["list any issues requiring human review"],
+  "glSource": "from invoice | from vendor master default | REVIEW NEEDED",
+  "paymentTerms": "Net 30 etc if visible",
+  "lineItems": [
+    { "accountNumber": 640100, "amount": 123.45, "description": "line description" }
+  ]
+}
+
+FLAG (never guess) when: invoice number unreadable, amount ambiguous, vendor not in master, dates unclear, GL illegible or absent, no approval found, math doesn't tie.
+Status is READY FOR REVIEW only when all required M3 fields have real values (no REVIEW NEEDED).`;
+}
+
+// ─── PROCESS ONE BATCH ────────────────────────────────────────────────────────
+async function processBatch(batchFiles, batchIndex, totalBatches) {
+  setProcessingTitle(`Batch ${batchIndex+1} of ${totalBatches} — encoding files…`);
+
+  const content = [{ type: 'text', text: buildSystemPrompt() }];
+
+  for (const f of batchFiles) {
+    logLine(`Encoding ${f.name}…`);
+    const b64  = await fileToBase64(f);
+    const isPDF = f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf');
+    if (isPDF) {
+      content.push({ type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } });
+    } else {
+      content.push({ type: 'image', source: { type: 'base64', media_type: f.type || 'image/jpeg', data: b64 } });
+    }
+  }
+
+  content.push({ type: 'text', text: `Extract all invoice data from the ${batchFiles.length} attached file(s) and return the JSON array.` });
+
+  setProcessingTitle(`Batch ${batchIndex+1} of ${totalBatches} — calling Claude…`);
+  logLine(`Sending batch ${batchIndex+1} to Claude (${batchFiles.length} invoice${batchFiles.length>1?'s':''})…`);
+
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 8000,
+      messages: [{ role: 'user', content }]
+    })
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `API error ${res.status}`);
+  }
+
+  const data    = await res.json();
+  const rawText = data.content.filter(b => b.type === 'text').map(b => b.text).join('');
+  const invoices = await parseJSON(rawText);
+
+  logLine(`✓ Batch ${batchIndex+1}: extracted ${invoices.length} invoice${invoices.length!==1?'s':''}`);
+  return invoices;
+}
+
+// ─── MAIN PROCESS HANDLER ─────────────────────────────────────────────────────
+processBtn.addEventListener('click', async () => {
+  if (files.length === 0 || !skillsCache.vendorMaster) return;
+
+  processBtn.disabled = true;
+  allResults = [];
+  document.getElementById('processingBox').classList.add('active');
+  document.getElementById('processingLog').innerHTML = '';
+  document.getElementById('resultsBox').classList.remove('active');
+  document.getElementById('errorBox').classList.remove('active');
+  setProgress(0);
+
+  // Split into batches
+  const batches = [];
+  for (let i = 0; i < files.length; i += BATCH_SIZE) {
+    batches.push(files.slice(i, i + BATCH_SIZE));
+  }
+
+  logLine(`${files.length} invoice${files.length>1?'s':''} → ${batches.length} batch${batches.length>1?'es':''}…`);
+
+  try {
+    for (let i = 0; i < batches.length; i++) {
+      const batchResults = await processBatch(batches[i], i, batches.length);
+      allResults = [...allResults, ...batchResults];
+      setProgress(Math.round(((i+1) / batches.length) * 100));
+    }
+
+    logLine(`✓ Done — ${allResults.length} total invoice${allResults.length!==1?'s':''} processed`);
+    renderResults(allResults);
+
+  } catch (err) {
+    document.getElementById('processingBox').classList.remove('active');
+    const eb = document.getElementById('errorBox');
+    eb.classList.add('active');
+    eb.innerHTML = `<strong>Error:</strong> ${err.message}`;
+  }
+
+  processBtn.disabled = false;
+});
+
+// ─── RENDER RESULTS ───────────────────────────────────────────────────────────
+function renderResults(invoices) {
+  document.getElementById('processingBox').classList.remove('active');
+  document.getElementById('resultsBox').classList.add('active');
+
+  const ready  = invoices.filter(i => i.status === 'READY FOR REVIEW').length;
+  const review = invoices.length - ready;
+  const total  = invoices.reduce((s, i) => s + (parseFloat(i.amount) || 0), 0);
+
+  document.getElementById('statTotal').textContent  = invoices.length;
+  document.getElementById('statReady').textContent  = ready;
+  document.getElementById('statReview').textContent = review;
+  document.getElementById('statAmount').textContent = fmtAmt(total);
+  document.getElementById('resultsMeta').textContent = new Date().toLocaleString();
+
+  // Table
+  const tbody = document.getElementById('invoiceTableBody');
+  tbody.innerHTML = invoices.map(inv => {
+    const isReady = inv.status === 'READY FOR REVIEW';
+    const flags   = (inv.flags || []).join(' · ');
+    const lines   = inv.lineItems || [{ accountNumber: inv.accountNumber, amount: inv.amount }];
+    const multiGL = lines.length > 1;
+
+    // Main invoice row
+    let rows = `<tr>
+      <td>
+        <div>${inv.vendorName || '—'}</div>
+        ${flags ? `<span class="review-flag">⚠ ${flags}</span>` : ''}
+      </td>
+      <td style="font-family:'DM Mono',monospace;font-size:12px">${inv.invoiceNumber || '—'}</td>
+      <td style="font-family:'DM Mono',monospace;font-size:12px;white-space:nowrap">${inv.invoiceDate || '—'}</td>
+      <td style="font-size:12px">${inv.propertyName || ('Co. ' + inv.companyID) || '—'}</td>
+      <td style="font-size:12px">
+        ${multiGL
+          ? `<span style="color:var(--text-muted);font-family:'DM Mono',monospace;font-size:11px">${lines.length} GL codes ↓</span>`
+          : `<span class="gl-tag">${lines[0]?.accountNumber || '—'}</span>`}
+      </td>
+      <td class="amount-cell">${fmtAmt(inv.amount)}</td>
+      <td><span class="badge ${isReady ? 'badge-green' : 'badge-yellow'}">${isReady ? '✓ Ready' : '⚠ Review'}</span></td>
+    </tr>`;
+
+    // GL line item rows (only if multi-GL)
+    if (multiGL) {
+      rows += lines.map(li => `<tr class="gl-row">
+        <td colspan="4" style="color:var(--text-muted)">${li.description || ''}</td>
+        <td class="gl-tag">${li.accountNumber || '—'}</td>
+        <td class="amount-cell" style="font-size:12px">${fmtAmt(li.amount)}</td>
+        <td></td>
+      </tr>`).join('');
+    }
+
+    return rows;
+  }).join('');
+
+  // Flags
+  const allFlags = invoices.flatMap(i => (i.flags||[]).map(f => `${i.vendorName}: ${f}`));
+  const flagsSection = document.getElementById('flagsSection');
+  const flagsList    = document.getElementById('flagsList');
+  if (allFlags.length > 0) {
+    flagsSection.classList.add('has-flags');
+    flagsList.innerHTML = allFlags.map(f => `<div class="flag-item">⚠ ${f}</div>`).join('');
+  } else {
+    flagsSection.classList.remove('has-flags');
+  }
+
+  buildExcel(invoices);
+}
+
+// ─── BUILD EXCEL ──────────────────────────────────────────────────────────────
+function buildExcel(invoices) {
+  const wb = XLSX.utils.book_new();
+
+  const M3_COLS = [
+    'CompanyID','PropertyID','VendorNumber','VendorName','InvoiceNumber',
+    'InvoiceDate','PostDate','DueDate','Amount','AccountNumber','LineItemAmount',
+    'Phone','Fax','Email','AddressLine1','AddressLine2','City','State','Zip',
+    'Title','FirstName','LastName','Description','LineItemDescription',
+    'TaxGroup','TaxCode','PO#'
+  ];
+
+  const apRows = [M3_COLS];
+
+  for (const inv of invoices) {
+    const lines = inv.lineItems && inv.lineItems.length > 0
+      ? inv.lineItems
+      : [{ accountNumber: inv.accountNumber, amount: inv.amount, description: '' }];
+
+    for (const li of lines) {
+      apRows.push([
+        inv.companyID   ?? '',
+        inv.propertyID  ?? '',
+        inv.vendorNumber ?? '',
+        inv.vendorName  ?? '',
+        inv.invoiceNumber ?? '',
+        inv.invoiceDate ?? '',
+        inv.invoiceDate ?? '',   // PostDate = InvoiceDate
+        inv.dueDate     ?? '',
+        inv.amount      ?? '',
+        li.accountNumber ?? '',
+        li.amount       ?? '',
+        '', '', '',              // Phone, Fax, Email
+        '', '', '', '', '',      // Address fields
+        '', '', '',              // Title, First, Last
+        li.description  ?? '',
+        li.description  ?? '',
+        '', '', ''               // TaxGroup, TaxCode, PO#
+      ]);
+    }
+  }
+
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(apRows), 'AP Invoice');
+
+  // Exceptions sheet
+  const excRows = [['Vendor','Invoice#','Field','Issue','Action Required']];
+  for (const inv of invoices) {
+    for (const f of (inv.flags||[])) {
+      excRows.push([inv.vendorName, inv.invoiceNumber, 'See flag', f, 'Review and correct before import']);
+    }
+    if (!inv.vendorNumber || inv.vendorNumber === 'REVIEW NEEDED') {
+      excRows.push([inv.vendorName, inv.invoiceNumber, 'VendorNumber', 'Not found in vendor master', 'Add vendor to M3 and update']);
+    }
+    const lines = inv.lineItems || [];
+    for (const li of lines) {
+      if (!li.accountNumber || String(li.accountNumber).includes('REVIEW')) {
+        excRows.push([inv.vendorName, inv.invoiceNumber, 'AccountNumber / GL', 'GL code missing or illegible', 'Assign correct GL from chart of accounts']);
+      }
+    }
+  }
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(excRows), 'Exceptions');
+
+  // Legend sheet
+  const legRows = [
+    ['Status','Meaning'],
+    ['READY FOR REVIEW','All required M3 fields populated — no blocking issues'],
+    ['NOT READY FOR IMPORT','One or more required fields are missing or need review'],
+    [''],
+    ['Note','Multi-GL invoices generate one row per GL line in the AP Invoice sheet']
+  ];
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(legRows), 'Legend');
+
+  const wbOut = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+  const blob  = new Blob([wbOut], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  const url   = URL.createObjectURL(blob);
+  const dl    = document.getElementById('downloadBtn');
+  dl.href     = url;
+  dl.download = `hollander-ap-import-${new Date().toISOString().slice(0,10)}.xlsx`;
+}
+</script>
+</body>
+</html>
